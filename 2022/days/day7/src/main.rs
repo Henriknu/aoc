@@ -1,7 +1,11 @@
+use std::{cell::RefCell, rc::Rc};
+
 use framework::*;
 
 const TOTAL_DISK_SPACE: u64 = 70_000_000;
 const MIN_NEEDED_DISK_SPACE: u64 = 30_000_000;
+
+type DirStack = Vec<Rc<RefCell<Directory>>>;
 
 struct Solution;
 
@@ -39,26 +43,24 @@ impl SolutionProvider for Solution {
 
 #[derive(Debug, Clone)]
 enum FileNode {
-    Directory(Directory),
+    Directory(Rc<RefCell<Directory>>),
     File(File),
 }
 
 impl FileNode {
     pub fn parse(input: &String) -> Self {
-        let mut root_dir = Directory {
+        let root_dir = Rc::new(RefCell::new(Directory {
             name: "/".to_owned(),
             nodes: Vec::new(),
-        };
+        }));
 
-        let mut dir_stack = vec![root_dir.name.clone()];
+        let mut dir_stack: DirStack = vec![root_dir.clone()];
 
         for line in input.lines().skip(1) {
             match line {
-                s if s.starts_with("$ cd") => {
-                    FileNode::handle_cd(line, &mut root_dir, &mut dir_stack)
-                }
+                s if s.starts_with("$ cd") => FileNode::handle_cd(line, &mut dir_stack),
                 s if s.starts_with("$ ls") => (),
-                _ => FileNode::handle_new_node(line, &mut root_dir, &mut dir_stack),
+                _ => FileNode::handle_new_node(line, &mut dir_stack),
             }
         }
 
@@ -70,7 +72,7 @@ impl FileNode {
 
         match self {
             FileNode::Directory(dir) => {
-                for node in &dir.nodes {
+                for node in &dir.borrow().nodes {
                     total_size += node.calculate_rm_sizes(sizes, max_dir_size);
                 }
 
@@ -86,7 +88,7 @@ impl FileNode {
         }
     }
 
-    fn handle_cd(line: &str, root: &mut Directory, dir_stack: &mut Vec<String>) {
+    fn handle_cd(line: &str, dir_stack: &mut DirStack) {
         let new_dir = line.split_whitespace().nth(2).unwrap();
 
         match new_dir {
@@ -94,20 +96,19 @@ impl FileNode {
                 dir_stack.pop();
             }
             dir => {
-                let node = FileNode::Directory(Directory {
+                let dir = Rc::new(RefCell::new(Directory {
                     name: dir.into(),
                     nodes: Vec::new(),
-                });
+                }));
 
-                let current_dir = root.traverse_to_current_dir(dir_stack);
-
-                current_dir.nodes.push(node);
-                dir_stack.push(dir.into());
+                let node = FileNode::Directory(dir.clone());
+                dir_stack.last().unwrap().borrow_mut().nodes.push(node);
+                dir_stack.push(dir);
             }
         };
     }
 
-    fn handle_new_node(line: &str, root_dir: &mut Directory, dir_stack: &[String]) {
+    fn handle_new_node(line: &str, dir_stack: &mut DirStack) {
         let mut split = line.split_whitespace();
         let first = split.next().unwrap();
         let last = split.next().unwrap();
@@ -119,9 +120,7 @@ impl FileNode {
                     name: last.into(),
                     size: size.parse::<u64>().unwrap(),
                 });
-
-                let current_dir = root_dir.traverse_to_current_dir(dir_stack);
-                current_dir.nodes.push(node);
+                dir_stack.last().unwrap().borrow_mut().nodes.push(node);
             }
         }
     }
@@ -129,36 +128,13 @@ impl FileNode {
 
 #[derive(Debug, Clone)]
 struct Directory {
+    #[allow(dead_code)]
     name: String,
     nodes: Vec<FileNode>,
 }
-impl Directory {
-    fn traverse_to_current_dir(&mut self, dir_stack: &[String]) -> &mut Directory {
-        let mut stack = dir_stack.iter().skip(1);
-        let mut current_dir = self;
-        while let Some(next_dir_name) = stack.next() {
-            current_dir = current_dir
-                .nodes
-                .iter_mut()
-                .filter_map(|node| match node {
-                    FileNode::Directory(dir) => {
-                        if dir.name == *next_dir_name {
-                            Some(dir)
-                        } else {
-                            None
-                        }
-                    }
-                    FileNode::File(_) => None,
-                })
-                .next()
-                .unwrap();
-        }
-
-        current_dir
-    }
-}
 #[derive(Debug, Clone)]
 struct File {
+    #[allow(dead_code)]
     name: String,
     size: u64,
 }
