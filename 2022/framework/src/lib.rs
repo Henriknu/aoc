@@ -15,9 +15,11 @@ macro_rules! aoc_main {
             let input = std::fs::read_to_string(format!("data/{}.txt", stringify!($input_path)))?;
             $(
                 let result1 = <$solution>::part1(&input).unwrap();
+                println!("Solution: {}, Part 1: {result1}", stringify!($solution));
+
                 let result2 = <$solution>::part2(&input).unwrap();
 
-                println!("Solution: {}, Part1: {result1}, Part2: {result2}", stringify!($solution));
+                println!("Solution: {}, Part 2: {result2}", stringify!($solution));
 
             )+
 
